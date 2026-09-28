@@ -9,7 +9,7 @@ from urllib.request import Request, urlopen
 
 import pandas as pd
 
-FXMACRODATA_BASE_URL = "https://fxmacrodata.com/api/v1"
+FXMACRODATA_BASE_URL = "https://api.fxmacrodata.com/v1"
 FXMACRODATA_API_KEY_ENV_VARS = ("FXMACRODATA_API_KEY", "FXMD_API_KEY")
 FXMACRODATA_ENDPOINTS = {
     "data_catalogue": (
@@ -208,6 +208,13 @@ class FXMacroDataClient:
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
 
+    def _headers(self, extra=None):
+        headers = {"User-Agent": "fxmacrodata-integration"}
+        if self.api_key:
+            headers["X-API-Key"] = self.api_key
+        headers.update(extra or {})
+        return headers
+
     def fetch_dataset(self, dataset, **kwargs):
         dataset = _dataset_name(dataset)
         if dataset not in FXMACRODATA_ENDPOINTS:
@@ -217,12 +224,10 @@ class FXMacroDataClient:
         path_template, query_keys = FXMACRODATA_ENDPOINTS[dataset]
         path = _format_path(path_template, kwargs)
         query = _clean_params({key: kwargs.get(key) for key in query_keys})
-        if self.api_key and "api_key" not in query:
-            query["api_key"] = self.api_key
         url = "%s/%s" % (self.base_url, path.lstrip("/"))
         if query:
             url = "%s?%s" % (url, urlencode(query))
-        request = Request(url, headers={"User-Agent": "fxmacrodata-integration"})
+        request = Request(url, headers=self._headers())
         with urlopen(request, timeout=self.timeout) as response:  # nosec B310
             return json.loads(response.read().decode("utf-8"))
 
@@ -233,10 +238,7 @@ class FXMacroDataClient:
         request = Request(
             "%s/graphql" % self.base_url,
             data=body,
-            headers={
-                "Content-Type": "application/json",
-                "User-Agent": "fxmacrodata-integration",
-            },
+            headers=self._headers({"Content-Type": "application/json"}),
             method="POST",
         )
         with urlopen(request, timeout=self.timeout) as response:  # nosec B310
